@@ -36,6 +36,25 @@ typedef struct cis_db_hash_info_t {
     cis_db_info_t **elem;
 } cis_db_hash_info_t;
 
+typedef enum SCA_MSG_TYPE {
+    SCA_MSG_TYPE_FILE = 0,
+    SCA_MSG_TYPE_DIRECTORY,
+    SCA_MSG_TYPE_PROCESS,
+    SCA_MSG_TYPE_REGISTRY,
+    SCA_MSG_TYPE_COMMAND,
+    SCA_MSG_TYPE_OTHER
+} SCA_MSG_TYPE;
+
+static const char EMPTY_STRING[] = "\0";
+static const char *SCA_MSG_TYPE_STRINGS [] = {
+    [SCA_MSG_TYPE_FILE] = "file",
+    [SCA_MSG_TYPE_DIRECTORY] = "directory",
+    [SCA_MSG_TYPE_PROCESS] = "process",
+    [SCA_MSG_TYPE_REGISTRY] = "registry",
+    [SCA_MSG_TYPE_COMMAND] = "command",
+    [SCA_MSG_TYPE_OTHER] = "file" /* not a bug! */
+};
+
 static void * wm_sca_main(wm_sca_t * data);   // Module main function. It won't return
 static void wm_sca_destroy(wm_sca_t * data);  // Destroy data
 static int wm_sca_start(wm_sca_t * data);  // Start
@@ -2300,88 +2319,36 @@ static cJSON *wm_sca_build_event(cJSON *profile,cJSON *policy,char **p_alert_msg
 
     // Get File or Process from alert
     int i = 0;
-    char * final_str_file = NULL;
-    char * final_str_directory = NULL;
-    char * final_str_process = NULL;
-    char * final_str_registry = NULL;
-    char * final_str_command = NULL;
+    char * final_str = NULL;
+    
+    SCA_MSG_TYPE msg_type;
 
-    while(i < 255) {
-
-        if(p_alert_msg[i]) {
-            char *alert_file = strstr(p_alert_msg[i],"File:");
-            char *alert_directory = strstr(p_alert_msg[i],"Directory:");
-
-            if(alert_file){
-                alert_file+= 5;
-                *alert_file = '\0';
-                alert_file++;
-                wm_strcat(&final_str_file,alert_file,',');
-            } else if (alert_directory){
-                alert_directory+= 10;
-                *alert_directory = '\0';
-                alert_directory++;
-                wm_strcat(&final_str_directory,alert_directory,',');
-            } else {
-                char *alert_process = strstr(p_alert_msg[i],"Process:");
-                if(alert_process){
-                    alert_process+= 8;
-                    *alert_process = '\0';
-                    alert_process++;
-                    wm_strcat(&final_str_process,alert_process,',');
-                } else {
-                    char *alert_registry = strstr(p_alert_msg[i],"Registry:");
-                    if(alert_registry){
-                        alert_registry+= 9;
-                        *alert_registry = '\0';
-                        alert_registry++;
-                        wm_strcat(&final_str_registry,alert_registry,',');
-                    } else {
-                        char *alert_command = strstr(p_alert_msg[i],"Command:");
-
-                        if(alert_command) {
-                            alert_command+= 8;
-                            *alert_command = '\0';
-                            alert_command++;
-                            wm_strcat(&final_str_command,alert_command,',');
-                        }
-                    }
-                }
-            }
+    while(i < 255 && p_alert_msg[i]) {
+        char *type_found_ptr = NULL;
+        /* a message is of type T if the string starts by T */
+        if (type_found_ptr = strcasestr(p_alert_msg[i], SCA_MSG_TYPE_STRINGS[SCA_MSG_TYPE_FILE]), type_found_ptr == p_alert_msg[i]) {
+            msg_type = SCA_MSG_TYPE_FILE;
+        } else if (type_found_ptr = strcasestr(p_alert_msg[i], SCA_MSG_TYPE_STRINGS[SCA_MSG_TYPE_DIRECTORY]), type_found_ptr == p_alert_msg[i]) {
+            msg_type = SCA_MSG_TYPE_DIRECTORY;
+        } else if (type_found_ptr = strcasestr(p_alert_msg[i], SCA_MSG_TYPE_STRINGS[SCA_MSG_TYPE_PROCESS]), type_found_ptr == p_alert_msg[i]) {
+            msg_type = SCA_MSG_TYPE_PROCESS;
+        } else if (type_found_ptr = strcasestr(p_alert_msg[i], SCA_MSG_TYPE_STRINGS[SCA_MSG_TYPE_REGISTRY]), type_found_ptr == p_alert_msg[i]) {
+            msg_type = SCA_MSG_TYPE_REGISTRY;
+        } else if (type_found_ptr = strcasestr(p_alert_msg[i], SCA_MSG_TYPE_STRINGS[SCA_MSG_TYPE_COMMAND]), type_found_ptr == p_alert_msg[i]) {
+            msg_type = SCA_MSG_TYPE_COMMAND;
         } else {
-            break;
+            // unkown messages types are sent, but have no message
+            msg_type = SCA_MSG_TYPE_OTHER;
+        }
+        // after the type string, there should be a colon (:)
+        const char * const splitting_colon = strstr(type_found_ptr, ":");
+        if (splitting_colon) {
+            wm_strcat(&final_str, splitting_colon + 1, ',');
         }
         i++;
     }
 
-    if(!final_str_file && !final_str_directory && !final_str_process && !final_str_registry && !final_str_command) {
-        cJSON_AddStringToObject(check, "file", "\0");
-    }
-
-    if(final_str_file) {
-        cJSON_AddStringToObject(check, "file", final_str_file);
-        os_free(final_str_file);
-    }
-
-    if(final_str_directory) {
-        cJSON_AddStringToObject(check, "directory", final_str_directory);
-        os_free(final_str_directory);
-    }
-
-    if(final_str_process) {
-       cJSON_AddStringToObject(check, "process", final_str_process);
-       os_free(final_str_process);
-    }
-
-    if(final_str_registry) {
-       cJSON_AddStringToObject(check, "registry", final_str_registry);
-       os_free(final_str_registry);
-    }
-
-    if(final_str_command) {
-       cJSON_AddStringToObject(check, "command", final_str_command);
-       os_free(final_str_command);
-    }
+    cJSON_AddStringToObject(check, SCA_MSG_TYPE_STRINGS[msg_type], msg_type != SCA_MSG_TYPE_OTHER ? final_str : EMPTY_STRING);
 
     cJSON_AddStringToObject(check, "result", result);
 
