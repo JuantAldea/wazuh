@@ -773,7 +773,6 @@ static int wm_sca_check_requirements(cJSON *requirements) {
     return retval;
 }
 
-
 static int wm_sca_do_scan(OSList *p_list,cJSON *profile_check,OSStore *vars,wm_sca_t * data,int id,cJSON *policy,int requirements_scan,int cis_db_index,unsigned int remote_policy,int first_scan) {
 
     int type = 0, condition = 0, invalid = 0;
@@ -1147,6 +1146,7 @@ static int wm_sca_do_scan(OSList *p_list,cJSON *profile_check,OSStore *vars,wm_s
                     data->alert_msg[i] = NULL;
                 }
 
+                /* Check if this entry is required for the rest of the file */
                 if (condition & WM_SCA_COND_REQ) {
                     if (requirements_scan == 1){
                         ret_val = 1;
@@ -1705,7 +1705,7 @@ static int wm_check_registry_entry(char * const value, wm_sca_t * const data)
     char *entry = wm_sca_get_pattern(value);
     char *pattern = entry ? wm_sca_get_pattern(entry) : NULL;
 
-    minfo("Checking registry: '%s\\%s'...", value, entry);
+    mdebug1("Checking registry: '%s\\%s'...", value, entry);
     
     char _b_msg[OS_SIZE_1024 + 1];
     _b_msg[OS_SIZE_1024] = '\0';
@@ -1715,10 +1715,10 @@ static int wm_check_registry_entry(char * const value, wm_sca_t * const data)
 
     const int ret = wm_sca_is_registry(value, entry, pattern);
     if (ret == 1) {
-        minfo("registry found.");
+        mdebug2("registry found.");
         return 1;
     } else if (ret == -1) {
-        minfo("registry not found.");
+        mdebug2("registry not found.");
     }
 
     return 0;
