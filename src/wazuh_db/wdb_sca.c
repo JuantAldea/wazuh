@@ -199,7 +199,7 @@ int wdb_sca_global_update(wdb_t * wdb, int scan_id, char *name,char *description
     sqlite3_bind_int(stmt, 6, failed);
     sqlite3_bind_int(stmt, 7, score);
     sqlite3_bind_text(stmt, 8, name, -1, NULL);
-    
+
     if (sqlite3_step(stmt) == SQLITE_DONE) {
         return 0;
     } else {
@@ -303,7 +303,7 @@ int wdb_sca_policy_delete(wdb_t * wdb,char * policy_id) {
     stmt = wdb->stmt[WDB_STMT_SCA_POLICY_DELETE];
 
     sqlite3_bind_text(stmt, 1, policy_id, -1, NULL);
-    
+
     if (sqlite3_step(stmt) == SQLITE_DONE) {
         wdb_sca_scan_info_delete(wdb,policy_id);
         return 0;
@@ -331,7 +331,7 @@ int wdb_sca_scan_info_delete(wdb_t * wdb,char * policy_id) {
     stmt = wdb->stmt[WDB_STMT_SCA_SCAN_INFO_DELETE];
 
     sqlite3_bind_text(stmt, 1, policy_id, -1, NULL);
-    
+
     if (sqlite3_step(stmt) == SQLITE_DONE) {
         return 0;
     } else {
@@ -359,7 +359,7 @@ int wdb_sca_check_delete_distinct(wdb_t * wdb,char * policy_id,int scan_id) {
 
     sqlite3_bind_int(stmt, 1, scan_id);
     sqlite3_bind_text(stmt, 2, policy_id, -1, NULL);
-    
+
     if (sqlite3_step(stmt) == SQLITE_DONE) {
         return 0;
     } else {
@@ -385,7 +385,7 @@ int wdb_sca_check_delete(wdb_t * wdb,char * policy_id) {
     stmt = wdb->stmt[WDB_STMT_SCA_CHECK_DELETE];
 
     sqlite3_bind_text(stmt, 1, policy_id, -1, NULL);
-    
+
     if (sqlite3_step(stmt) == SQLITE_DONE) {
         return 0;
     } else {
@@ -409,7 +409,7 @@ int wdb_sca_check_compliances_delete(wdb_t * wdb) {
     }
 
     stmt = wdb->stmt[WDB_STMT_SCA_CHECK_COMPLIANCE_DELETE];
-    
+
     if (sqlite3_step(stmt) == SQLITE_DONE) {
         return 0;
     } else {
@@ -433,7 +433,7 @@ int wdb_sca_check_rules_delete(wdb_t * wdb) {
     }
 
     stmt = wdb->stmt[WDB_STMT_SCA_CHECK_RULES_DELETE];
-    
+
     if (sqlite3_step(stmt) == SQLITE_DONE) {
         return 0;
     } else {
@@ -460,9 +460,12 @@ int wdb_sca_scan_find(wdb_t * wdb, char *policy_id, char * output) {
     stmt = wdb->stmt[WDB_STMT_SCA_FIND_SCAN];
 
     sqlite3_bind_text(stmt, 1, policy_id, -1, NULL);
-
     switch (sqlite3_step(stmt)) {
         case SQLITE_ROW:
+            if (strstr((const char*)sqlite3_column_text(stmt, 0), "sca_condition")){
+                merror("<> DATABASE_DAEMON0 |%s| |%s| |%d|", sqlite3_column_text(stmt, 0), sqlite3_column_text(stmt, 1),sqlite3_column_int(stmt, 2));
+            }
+
             snprintf(output, OS_MAXSTR - WDB_RESPONSE_BEGIN_SIZE, "%s %d", sqlite3_column_text(stmt, 1),sqlite3_column_int(stmt, 2));
             return 1;
             break;
@@ -556,7 +559,7 @@ int wdb_sca_compliance_save(wdb_t * wdb, int id_check, char *key, char *value) {
     sqlite3_bind_int(stmt, 1, id_check);
     sqlite3_bind_text(stmt, 2, key, -1, NULL);
     sqlite3_bind_text(stmt, 3, value, -1, NULL);
-    
+
     if (sqlite3_step(stmt) == SQLITE_DONE) {
         return 0;
     } else {

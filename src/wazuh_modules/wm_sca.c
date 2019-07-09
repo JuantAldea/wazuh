@@ -2829,7 +2829,7 @@ static void *wm_sca_dump_db_thread(wm_sca_t * data) {
             }
 
             unsigned int time = random;
-
+            time = 1;
             if (request->first_scan) {
                 wm_delay(2000);
                 mdebug1("Sending first scan results for policy '%s'", data->profile[request->policy_index]->profile);

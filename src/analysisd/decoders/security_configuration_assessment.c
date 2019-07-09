@@ -328,36 +328,37 @@ static int FindCheckResults(Eventinfo *lf, char * policy_id, int *socket,char *w
 
     char *msg = NULL;
     char *response = NULL;
-    int retval = -1;
 
     os_calloc(OS_MAXSTR, sizeof(char), msg);
     os_calloc(OS_MAXSTR, sizeof(char), response);
 
     mdebug1("Find check results for policy id: %s", policy_id);
+    //mdebug1("<> Find check results for policy id: %s", policy_id);
 
     snprintf(msg, OS_MAXSTR - 1, "agent %s sca query_results %s", lf->agent_id, policy_id);
-
-    if (pm_send_db(msg, response, socket) == 0)
-    {
-        if (!strncmp(response, "ok found", 8))
-        {
-            char *result_checks = response + 9;
-            snprintf(wdb_response,OS_MAXSTR,"%s",result_checks);
-            retval = 0;
-        }
-        else if (!strcmp(response, "ok not found"))
-        {
-            retval = 1;
-        }
-        else
-        {
-            retval = -1;
-        }
+    //mdebug2("<> DATABASE QUERY DATA: %s, %s", policy_id, lf->agent_id);
+    //mdebug2("<> DATABASE QUERY %s: %s", policy_id, msg);
+    if (pm_send_db(msg, response, socket) != 0) {
+        os_free(response);
+        return -1;
     }
 
-    free(response);
-    return retval;
+    //mdebug2("<> DATABASE RESPONSE for %s: %s", policy_id, response);
 
+    if (!strncmp(response, "ok found", 8)) {
+        char *result_checks = response + 9;
+        snprintf(wdb_response,OS_MAXSTR,"%s",result_checks);
+        os_free(response);
+        return 0;
+    }
+
+    if (!strcmp(response, "ok not found")) {
+        os_free(response);
+        return 1;
+    }
+
+    os_free(response);
+    return -1;
 }
 
 static int FindPoliciesIds(Eventinfo *lf, int *socket,char *wdb_response) {
@@ -612,22 +613,19 @@ static int SaveScanInfo(Eventinfo *lf,int *socket, char * policy_id,int scan_id,
 
     mdebug1("Saving scan info for policy id '%s', agent id '%s'", policy_id, lf->agent_id);
 
-    if(!update) {
-        snprintf(msg, OS_MAXSTR - 1, "agent %s sca insert_scan_info %d|%d|%d|%s|%d|%d|%d|%d|%d|%s",lf->agent_id,pm_start_scan,pm_end_scan,scan_id,policy_id,pass,failed,invalid,total_checks,score,hash);
-    } else {
+    if (update) {
         snprintf(msg, OS_MAXSTR - 1, "agent %s sca update_scan_info_start %s|%d|%d|%d|%d|%d|%d|%d|%d|%s",lf->agent_id, policy_id,pm_start_scan,pm_end_scan,scan_id,pass,failed,invalid,total_checks,score,hash );
+    } else {
+        snprintf(msg, OS_MAXSTR - 1, "agent %s sca insert_scan_info %d|%d|%d|%s|%d|%d|%d|%d|%d|%s",lf->agent_id,pm_start_scan,pm_end_scan,scan_id,policy_id,pass,failed,invalid,total_checks,score,hash);
     }
 
-    if (pm_send_db(msg, response, socket) == 0)
-    {
+    if (pm_send_db(msg, response, socket) == 0) {
         os_free(response);
         return 0;
     }
-    else
-    {
-        os_free(response);
-        return -1;
-    }
+
+    os_free(response);
+    return -1;
 }
 
 static int SavePolicyInfo(Eventinfo *lf,int *socket, char *name,char *file, char * id,char *description,char * references, char *hash_file) {
@@ -736,7 +734,9 @@ static void HandleCheckEvent(Eventinfo *lf,int *socket,cJSON *event) {
     mdebug1("Checking event JSON fields");
 
     if(!CheckEventJSON(event,&scan_id,&id,&name,&title,&description,&rationale,&remediation,&compliance,&check,&reference,&file,&directory,&process,&registry,&result,&status,&reason,&policy_id,&command,&rules)) {
-
+        if (strstr(policy_id->valuestring, "sca_condition")) {
+            raise(SIGTRAP);
+        }
         int result_event = 0;
         char *wdb_response = NULL;
         os_calloc(OS_MAXSTR,sizeof(char),wdb_response);
@@ -750,10 +750,11 @@ static void HandleCheckEvent(Eventinfo *lf,int *socket,cJSON *event) {
                 merror("Error querying policy monitoring database for agent %s", lf->agent_id);
                 break;
             case 0: // It exists, update
+                mdebug2("Check found, updating: |%s|%d|%s|", policy_id->valuestring, id->valueint, result ? result->valuestring : "NO RESULT!");
                 result_event = SaveEventcheck(lf, 1, socket,id->valueint,scan_id ? scan_id->valueint : -1, result ? result->valuestring : NULL, status ? status->valuestring : NULL, reason ? reason->valuestring : NULL, event);
 
                 if (result){
-                    if(strcmp(wdb_response,result->valuestring)) {
+                    if(strcmp(wdb_response, result->valuestring)) {
                         FillCheckEventInfo(lf,scan_id,id,name,title,description,rationale,remediation,compliance,reference,file,directory,process,registry,result,status,reason,wdb_response,command);
                     }
                 } else if (status && status->valuestring) {
@@ -817,7 +818,7 @@ static void HandleCheckEvent(Eventinfo *lf,int *socket,cJSON *event) {
                     }
 
                     mdebug1("Saving rules to database for event id: %d", id->valueint);
-                    //Save rules
+
                     cJSON *rule;
                     cJSON_ArrayForEach(rule, rules){
                         if(rule->valuestring){
@@ -1008,22 +1009,28 @@ static void HandleScanInfo(Eventinfo *lf,int *socket,cJSON *event) {
         merror("Malformed JSON: field 'policy' must be a string");
         return;
     }
-
+    //mdebug1("<> '%s': %s %s", policy_id->valuestring, hash_file->valuestring, hash->valuestring);
+    if (strstr(policy_id->valuestring, "sca_condition")) {
+        raise(SIGTRAP);
+    }
 
     int result_event = 0;
     char *hash_scan_info = NULL;
     os_sha256 hash_sha256 = {0};
     os_calloc(OS_MAXSTR,sizeof(char),hash_scan_info);
 
-    mdebug1("Retrieving sha256 hash for policy id: %s", policy_id->valuestring);
+    if (strstr(policy_id->valuestring, "sca_condition")) {
+        mdebug1("Retrieving sha256 hash for policy id: %s", policy_id->valuestring);
+    }
 
     int result_db = FindScanInfo(lf,policy_id->valuestring,socket,hash_scan_info);
-
+    merror("<> FindScanInfo found: %s: %s: %d", policy_id->valuestring, hash_scan_info, result_db);
     int scan_id_old = 0;
 
     if (sscanf(hash_scan_info, "%64s %d", hash_sha256, &scan_id_old) < 2) {
         mdebug1("Retrieving sha256 hash for policy: '%s'", policy_id->valuestring);
     }
+    //merror("<> %s: %s", policy_id->valuestring, hash_scan_info);
 
     os_free(hash_scan_info);
 
@@ -1033,13 +1040,16 @@ static void HandleScanInfo(Eventinfo *lf,int *socket,cJSON *event) {
             merror("Error querying policy monitoring database for agent %s", lf->agent_id);
             break;
         case 0: // It exists, update
-            result_event = SaveScanInfo(lf,socket,policy_id->valuestring,pm_scan_id->valueint,pm_scan_start->valueint,pm_scan_end->valueint,passed->valueint,failed->valueint,invalid->valueint,total_checks->valueint,score->valueint,hash->valuestring,1);
-            if (result_event < 0)
-            {
+            result_event = SaveScanInfo(lf, socket, policy_id->valuestring, pm_scan_id->valueint, pm_scan_start->valueint, pm_scan_end->valueint,
+                passed->valueint, failed->valueint, invalid->valueint,total_checks->valueint, score->valueint, hash->valuestring, 1);
+            //mdebug2("<> SaveScanInfo result for %s (%s): %d ", policy_id->valuestring, hash->valuestring, result_event);
+            if (result_event < 0) {
                 merror("Error updating scan policy monitoring database for agent %s", lf->agent_id);
             } else {
-
                 /* Compare hash with previous hash */
+                if (strstr(policy_id->valuestring, "sca_condition")) {
+                    mdebug2("<> Compare hash with previous hash for %s: (%s) (%s). First scan? %d ", policy_id->valuestring, hash->valuestring, hash_sha256, first_scan ? first_scan->valueint: -123);
+                }
                 if(strcmp(hash_sha256, hash->valuestring)) {
                     if (!first_scan) {
                         FillScanInfo(lf,pm_scan_id,policy,description,passed,failed,invalid,total_checks,score,file,policy_id);
@@ -1116,6 +1126,7 @@ static void HandleScanInfo(Eventinfo *lf,int *socket,cJSON *event) {
         default:
             os_calloc(OS_MAXSTR, sizeof(char), old_hash);
             if(FindPolicySHA256(lf, policy_id->valuestring, socket, old_hash) == 0){
+                merror("FindPolicySHA256 Policy %s %s %s", policy_id->valuestring, hash_file->valuestring, old_hash);
                 if(strcmp(hash_file->valuestring, old_hash)){
                     int delete_status = DeletePolicy(lf, policy_id->valuestring, socket);
                     switch (delete_status) {
@@ -1137,28 +1148,32 @@ static void HandleScanInfo(Eventinfo *lf,int *socket,cJSON *event) {
 
     char *wdb_response = NULL;
     os_calloc(OS_MAXSTR,sizeof(char),wdb_response);
-
     result_db = FindCheckResults(lf,policy_id->valuestring,socket,wdb_response);
-
+    merror("FindPolicySHA256 RESULTS: %s %s %s: %d", policy_id->valuestring, hash->valuestring, wdb_response, result_db);
+    if (strcmp("18d316bb3133e0464ce0794a074ed3f5b38ae54ca5d2fa815dfed8455d2b1a4b", wdb_response) == 0){
+        raise(SIGTRAP);
+    }
     switch (result_db)
     {
         case -1:
             merror("Error querying policy monitoring database for agent %s", lf->agent_id);
             break;
         case 0:
-
             /* Integrity check */
-            if(strcmp(wdb_response,hash->valuestring)) {
+            //merror("<> INTEGRITY CHECK: %s %s", wdb_response, hash->valuestring);
 
+            if(strcmp(wdb_response, hash->valuestring)) {
+                merror("<> INTEGRITY CHECK FAILED FOR: %s", policy_id->valuestring);
                 mdebug2("SHA256 from DB: %s SHA256 from summary: %s",wdb_response,hash->valuestring);
                 mdebug2("Requesting DB dump");
-
+                merror("FindPolicySHA256 INTEGRITY CHECK FAILED: %s %s %s. FIRST SCAN?: %d", policy_id->valuestring, hash->valuestring, wdb_response, first_scan ? first_scan->valueint : -123);
                 if (!first_scan) {
                     PushDumpRequest(lf->agent_id,policy_id->valuestring,0);
                 } else {
                     PushDumpRequest(lf->agent_id,policy_id->valuestring,1);
                 }
-
+            } else {
+                merror("<> INTEGRITY CHECK PASSED FOR %s", policy_id->valuestring);
             }
 
             break;

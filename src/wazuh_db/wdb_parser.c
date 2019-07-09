@@ -12,7 +12,6 @@
 #include "wdb.h"
 #include "external/cJSON/cJSON.h"
 
-
 int wdb_parse(char * input, char * output) {
     char * actor;
     char * id;
@@ -25,7 +24,8 @@ int wdb_parse(char * input, char * output) {
     cJSON * data;
     char * out;
     int result = 0;
-
+    char *input_copy;
+    os_strdup(input, input_copy);
     if (!input) {
         mdebug1("Empty input query.");
         return -1;
@@ -95,11 +95,16 @@ int wdb_parse(char * input, char * output) {
             }
         } else if (strcmp(query, "sca") == 0) {
             if (!next) {
+                merror("<> DATABASE_DAEMON2-2 |%s| |%s| (%s)", input_copy, output, "32d439fbf6af286eb316ae09343f4027c9d8a3191cde661835d385bbad52bc06");
                 mdebug1("Invalid DB query syntax.");
                 mdebug2("DB query error near: %s", query);
                 snprintf(output, OS_MAXSTR + 1, "err Invalid DB query syntax, near '%.32s'", query);
                 result = -1;
             } else {
+                //e183f99d558700aaed31469093ebbe48b2233c75dc187bc4b4ba35eef2727429
+                if (strstr(input_copy, "sca_condition")){
+                    raise(SIGTRAP);
+                }
                 result = wdb_parse_sca(wdb, next, output);
                 if (result < 0){
                     merror("Unable to update 'sca_check' table for agent '%s'", sagent_id);
@@ -107,6 +112,10 @@ int wdb_parse(char * input, char * output) {
                     result = 0;
                 }
             }
+            if (strstr(input_copy, "sca_condition")) {
+                merror("<> DATABASE_DAEMON2 |%s| |%s|", input_copy, output);
+            }
+
         } else if (strcmp(query, "netinfo") == 0) {
             if (!next) {
                 mdebug1("DB(%s) Invalid DB query syntax.", sagent_id);
@@ -288,6 +297,9 @@ int wdb_parse(char * input, char * output) {
             result = -1;
         }
         wdb_leave(wdb);
+        if (strstr(input_copy, "sca_condition")) {
+            merror("<> DATABASE_DAEMON3 |%s| |%s|", input_copy, output);
+        }
         return result;
     } else if (strcmp(actor, "wazuhdb") == 0) {
         query = next;
@@ -468,7 +480,8 @@ int wdb_parse_sca(wdb_t * wdb, char * input, char * output) {
     char * status_check;
     char * reason_check;
     int result;
-
+    char *input_copy;
+    os_strdup(input, input_copy);
     if (next = strchr(input, ' '), !next) {
         mdebug1("Invalid Security Configuration Assessment query syntax.");
         mdebug2("Security Configuration Assessment query: %s", input);
@@ -478,7 +491,10 @@ int wdb_parse_sca(wdb_t * wdb, char * input, char * output) {
 
     curr = input;
     *next++ = '\0';
-
+    if (strstr(input_copy, "sca_condition") && (strstr(input_copy, "query_scan") || strstr(input_copy, "query_results"))) {
+        merror("%s", input_copy);
+        raise(SIGTRAP);
+    }
     if (strcmp(curr, "query") == 0) {
 
         int pm_id;
@@ -839,6 +855,11 @@ int wdb_parse_sca(wdb_t * wdb, char * input, char * output) {
         policy_id = curr;
 
         result = wdb_sca_checks_get_result(wdb, policy_id, result_found);
+        //result = wdb_sca_scan_find(wdb, policy_id, result_found);
+
+        if (strstr(policy_id, "sca_condition")){
+            merror ("<> DATABASE_DAEMON123 %s", result_found);
+        }
 
         switch (result) {
             case 0:
@@ -860,8 +881,8 @@ int wdb_parse_sca(wdb_t * wdb, char * input, char * output) {
 
         curr = next;
         policy_id = curr;
-
-        result = wdb_sca_scan_find(wdb, policy_id, result_found);
+        //result = wdb_sca_scan_find(wdb, policy_id, result_found);
+        result = wdb_sca_checks_get_result(wdb, policy_id, result_found);
 
         switch (result) {
             case 0:
@@ -873,6 +894,10 @@ int wdb_parse_sca(wdb_t * wdb, char * input, char * output) {
             default:
                 mdebug1("Cannot query Security Configuration Assessment.");
                 snprintf(output, OS_MAXSTR + 1, "err Cannot query Security Configuration Assessment scan");
+        }
+
+        if (strstr(input_copy, "sca_condition")){
+            merror("<> DATABASE_DAEMON1 |%s| |%s|", input_copy, output);
         }
 
         return result;
